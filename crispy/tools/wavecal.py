@@ -1,6 +1,6 @@
-from locate_psflets import locatePSFlets, PSFLets,fine_transform
-from image import Image
-from par_utils import Task, Consumer
+from crispy.tools.locate_psflets import locatePSFlets, PSFLets,fine_transform
+from crispy.tools.image import Image
+from crispy.tools.par_utils import Task, Consumer
 import matplotlib as mpl
 import numpy as np
 from scipy import signal
@@ -9,7 +9,7 @@ try:
 except BaseException:
     import pyfits as fits
 
-from initLogger import getLogger
+from crispy.tools.initLogger import getLogger
 log = getLogger('crispy')
 import os
 import re
@@ -17,7 +17,7 @@ import time
 import multiprocessing
 from scipy import ndimage
 import matplotlib.pyplot as plt
-from reduction import calculateWaveList
+from crispy.tools.reduction import calculateWaveList
 from scipy.special import erf
 from shutil import copy2
 import glob
@@ -1176,6 +1176,17 @@ def buildcalibrations(
 
         out = fits.HDUList(fits.PrimaryHDU(fullsigarr.astype(np.float32)))
         out.writeto(outdir + 'PSFwidths.fits', clobber=True)
+        
+        calib_hdus = fits.open(outdir + 'PSFloc.fits')
+        outkey = fits.HDUList(calib_hdus[0])
+        outkey.append(calib_hdus[1])
+        outkey.append(calib_hdus[2])
+        outkey.append(calib_hdus[3])
+        outkey.append(calib_hdus[4])
+        outkey.append(fullsigarr.astype(np.float32))
+        outkey.writeto(outdir+'calib.fits', overwrite=True)
+
+
 
     if makePolychrome:
         if not makehiresPSFlets:

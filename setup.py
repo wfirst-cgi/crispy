@@ -12,7 +12,7 @@ except ImportError:
 
 setup(
     name='crispy',
-    version="0.3", 
+    version="0.9", 
     author='Maxime Rizzo',
     author_email = 'maxime.j.rizzo@nasa.gov',
     url = 'https://github.com/mjrfringes/crispy',
@@ -28,5 +28,5 @@ setup(
         'Programming Language :: Python'
         ],
     include_dirs = ['crispy','crispy/tools'],
-    install_requires = ['numpy','scipy','matplotlib','astropy'],
+    install_requires = ['numpy','scipy','matplotlib','astropy','photutils'],
 )

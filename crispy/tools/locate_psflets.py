@@ -7,12 +7,12 @@ except BaseException:
     import pyfits as fits
 import copy
 from scipy import signal, ndimage, optimize, interpolate
-from image import Image
+from crispy.tools.image import Image
 import glob
 import re
 import os
 
-from initLogger import getLogger
+from crispy.tools.initLogger import getLogger
 log = getLogger('crispy')
 
 

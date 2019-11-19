@@ -29,6 +29,16 @@ from scipy.interpolate import griddata
 from crispy.tools.imgtools import gen_bad_pix_mask
 from photutils import centroid_com
 
+
+# from photutils import EPSFBuilder
+# from astropy.nddata import NDData
+# from astropy.stats import sigma_clipped_stats
+# from astropy.table import Table
+# from photutils import find_peaks
+# from photutils.psf import extract_stars
+
+
+
 warnings.filterwarnings("ignore")
 
 
@@ -392,6 +402,45 @@ def get_sim_hires(par, lam, upsample=10, nsubarr=1, npix=13, renorm=True):
     return hires_arr
 
 
+# def epsflets(subim,
+#             upsample=5,
+#             npix=13):
+#     """
+#     Estimates the underlying high-resolution PSFlets using Photutils tools
+#     
+#     Parameters
+#     ----------
+#     subim: 2D array
+#         Array representing the subsection of the focal over which to average PSFlets,
+#         assuming that they are all the same
+#     upsample: int
+#         Fits PSFlets and interpolates on a grid which has higher sampling than the original
+#         image by a factor "upsample"
+#     npix: int 
+#         Number of pixels for each PSFlet model
+#         
+#     Returns
+#     -------
+#     data: 2D array
+#         npix x npix array with the PSFlet model
+#     """
+#     data = subim.copy()
+#     peaks_tbl = find_peaks(data, threshold=100.)
+#     peaks_tbl['peak_value'].info.format = '%.8g'  # for consistent table output
+#     stars_tbl = Table()
+#     stars_tbl['x'] = peaks_tbl['x_peak']
+#     stars_tbl['y'] = peaks_tbl['y_peak']
+#     mean_val, median_val, std_val = sigma_clipped_stats(data, sigma=2.,
+#                                                         iters=None)
+#     data -= median_val
+#     nddata = NDData(data=data)
+#     stars = extract_stars(nddata, stars_tbl, size=npix)
+#     epsf_builder = EPSFBuilder(oversampling=upsample, maxiters=3,
+#                                progress_bar=False)
+#     epsf, fitted_stars = epsf_builder(stars)
+#     return epsf.data
+#             
+
 def gethires(x, y, good, image, upsample=5, nsubarr=5, npix=13, renorm=True):
     """
     Build high resolution images of the undersampled PSF using the
@@ -570,6 +619,37 @@ def gethires(x, y, good, image, upsample=5, nsubarr=5, npix=13, renorm=True):
 
     return hires_arr
 
+# def gethires(x, y, good, image, upsample=5, nsubarr=5, npix=13, renorm=True):
+#     """
+#     Build high resolution images of the undersampled PSF using the
+#     monochromatic frames.
+# 
+#     Inputs:
+#     1.
+#     """
+# 
+#     data = image.data
+#     subim = data[:image.data.shape[0] // nsubarr,:data.shape[1] // nsubarr]
+#     test = epsflets(subim,upsample,npix)
+#     hires_arr = np.zeros((nsubarr, nsubarr, test.shape[0], test.shape[1]))
+# 
+#     for yreg in range(nsubarr):
+#         i1 = yreg * data.shape[0] // nsubarr
+#         i2 = i1 + data.shape[0] // nsubarr
+#         i1 = max(i1, npix)
+#         i2 = min(i2, data.shape[0] - npix)
+#         for xreg in range(nsubarr):
+#             j1 = xreg * data.shape[1] // nsubarr
+#             j2 = j1 + data.shape[1] // nsubarr
+#             j1 = max(j1, npix)
+#             j2 = min(j2, data.shape[1] - npix)
+#             subim = data[i1:i2,j1:j2]
+#             hires_arr[yreg,xreg] = epsflets(subim,upsample,npix)
+#             if renorm:
+#                 hires_arr[yreg,xreg] *= upsample**2 / np.sum(hires_arr[yreg,xreg])
+# 
+#     return hires_arr
+
 
 def makeHires(
         par,
@@ -716,6 +796,45 @@ def makeHires(
     return hires_arrs
 
 
+from scipy.optimize import curve_fit
+def gauss(x, a, x0, sig,b):
+    '''
+    Simple gaussian function with usual inputs
+    '''
+    return b+a*np.exp(-(x-x0)**2/(2.*sig**2))
+    
+
+
+def fit_monochromatic_cube( cube,
+                            lamlist,
+                            returnAll = False,
+                            sigma_guess = 5):
+    '''
+    Fits an extracted data cube with a gaussian to find the wavelength peak
+    
+    Parameters
+    ----------
+    cube: 3D ndarray
+        The extracted datacube where all bad pixels are NaNs
+    lamlist: 1D array
+        List of wavelengths corresponding to the slices of the cube
+        Suggested units: nanometers (in which sigma_guess is about 5)
+    returnAll: boolean
+        If True, return the full results of the curve fit function (popt,pcov)
+        If False, return only the central wavelength (Default)
+    sigma_guess: float
+        Guess at the width of the gaussian fit in same units as lamlist (Default 5)
+    '''
+    vals = np.nansum(np.nansum(cube,axis=2),axis=1)
+    popt, pcov = curve_fit( gauss,
+                            lamlist,
+                            vals,
+                            p0=[np.amax(vals),lamlist[np.argmax(vals)],sigma_guess,0]
+                            )
+    if returnAll: return popt,pcov
+    else: return popt[1],np.sqrt(pcov)
+
+
 def monochromatic_update(par, inImage, inLam, order=3, apodize=False):
     '''
     TODO: also update polychrome when specified
@@ -735,16 +854,16 @@ def monochromatic_update(par, inImage, inLam, order=3, apodize=False):
     ysize, xsize = inImage.data.shape
     mask = np.ones((ysize, xsize))
     if apodize:
-        x = np.arange(ysize)
-        med_n = np.median(x)
-        x -= int(med_n)
-        x, y = np.meshgrid(x, x)
+        y = np.arange(ysize)
+        x = np.arange(xsize)
+        x -= xsize // 2
+        y -= ysize // 2
+        x, y = np.meshgrid(x, y)
 
         r = np.sqrt(x**2 + y**2)
-        mask = (r < ysize // 2)
+        mask = (r < min(ysize, xsize) // 2)
 
-    x, y, good, newcoef = locatePSFlets(inImage, polyorder=order, mask=mask, sig=par.FWHM /
-                                        2.35, coef=oldcoef, phi=par.philens, scale=par.pitch / par.pixsize, nlens=par.nlens)
+    x, y, good, newcoef = locatePSFlets(inImage, polyorder=order, mask=mask, sig=1., coef=oldcoef, phi=par.philens, scale=par.pitch / par.pixsize, nlens=par.nlens)
     psftool.geninterparray(lam, allcoef, order=order)
     dcoef = newcoef - oldcoef
 
@@ -756,9 +875,9 @@ def monochromatic_update(par, inImage, inLam, order=3, apodize=False):
         allcoef,
         order=order,
         lam1=min(lam) /
-        1.05,
+        1.01,
         lam2=max(lam) *
-        1.05)
+        1.01)
     psftool.savepixsol(outdir=par.wavecalDir)
 
     #################################################################
@@ -816,7 +935,8 @@ def buildcalibrations(
         apdiam=3,
         halfsize=5,
         snrthreshold=10,
-        initcoef=None):
+        initcoef=None,
+        readImgs=True):
     """
     Master wavelength calibration function
 
@@ -972,79 +1092,80 @@ def buildcalibrations(
     if finecal:
         log.info('Implementing experimental fine calibration method - watch out for bugs!')
 
-    for i, ifile in enumerate(filelist):
-        im = Image(filename=ifile)
-        # sets the inverse variance to be the mask
-        mean, median, std = sigma_clipped_stats(im.data, sigma=3.0, iters=5)
-#         im.data -= median
-        log.info('Mean, median, std: {:}'.format((mean, median, std)))
+    if readImgs:
+        for i, ifile in enumerate(filelist):
+            im = Image(filename=ifile)
+            # sets the inverse variance to be the mask
+            mean, median, std = sigma_clipped_stats(im.data, sigma=3.0, iters=5)
+    #         im.data -= median
+            log.info('Mean, median, std: {:}'.format((mean, median, std)))
         
-#         hpmask = gen_bad_pix_mask(im.data)
-#         mask *= hpmask
-#         mask *= (im.data-median>3*std)
-        imlist += [im]
-        if genwavelengthsol:
-            ## CHARIS regular wavecal step
-            x, y, good, coef = locatePSFlets(im, polyorder=order, mask=mask, sig=1., 
-                                coef=coef, phi=par.philens, 
-                                scale=par.pitch / par.pixsize, nlens=par.nlens,
-                                trimfrac=trimfrac)
-            allcoef += [[lamlist[i]] + list(coef)]
+    #         hpmask = gen_bad_pix_mask(im.data)
+    #         mask *= hpmask
+    #         mask *= (im.data-median>3*std)
+            imlist += [im]
+            if genwavelengthsol:
+                ## CHARIS regular wavecal step
+                x, y, good, coef = locatePSFlets(im, polyorder=order, mask=mask, sig=1., 
+                                    coef=coef, phi=par.philens, 
+                                    scale=par.pitch / par.pixsize, nlens=par.nlens,
+                                    trimfrac=trimfrac)
+                allcoef += [[lamlist[i]] + list(coef)]
             
-            if finecal:
-                log.info('Finding individual centroids (experimental)')
-                ## crispy enhanced wavecal step
-                dy = np.zeros_like(y)
-                dx = np.zeros_like(x)
-                snr = np.zeros_like(x)
-                mgrid = np.arange(2*halfsize)
-                xgrid,ygrid = np.meshgrid(mgrid,mgrid)
+                if finecal:
+                    log.info('Finding individual centroids (experimental)')
+                    ## crispy enhanced wavecal step
+                    dy = np.zeros_like(y)
+                    dx = np.zeros_like(x)
+                    snr = np.zeros_like(x)
+                    mgrid = np.arange(2*halfsize)
+                    xgrid,ygrid = np.meshgrid(mgrid,mgrid)
 
-                for j in range(x.shape[0]):
-                    for k in range(x.shape[1]):
-                        xl = x[j,k]
-                        yl = y[j,k]
-                        xmin = int(xl-halfsize)+1
-                        ymin = int(yl-halfsize)+1
-                        if ymin>0 and xmin>0 and xmin+2*halfsize<xsize and ymin+2*halfsize<ysize:
-                            # define cutout
-                            cutout = im.data[ymin:ymin+2*halfsize,xmin:xmin+2*halfsize]-median
+                    for j in range(x.shape[0]):
+                        for k in range(x.shape[1]):
+                            xl = x[j,k]
+                            yl = y[j,k]
+                            xmin = int(xl-halfsize)+1
+                            ymin = int(yl-halfsize)+1
+                            if ymin>0 and xmin>0 and xmin+2*halfsize<xsize and ymin+2*halfsize<ysize:
+                                # define cutout
+                                cutout = im.data[ymin:ymin+2*halfsize,xmin:xmin+2*halfsize]-median
                             
-                            # here is the new centroiding function: we could change this to something more robust
-                            dx[j,k],dy[j,k] = centroid_com(cutout)
+                                # here is the new centroiding function: we could change this to something more robust
+                                dx[j,k],dy[j,k] = centroid_com(cutout)
                             
-                            # mask used for elementary aperture photometry
-                            apmask = (xgrid-dx[j,k])**2+(ygrid-dy[j,k])**2<apdiam**2
-                            apval = np.nansum(apmask*cutout)
-#                             snr[j,k] = apval/(np.sqrt(np.nansum(apmask))*std)
+                                # mask used for elementary aperture photometry
+                                apmask = (xgrid-dx[j,k])**2+(ygrid-dy[j,k])**2<apdiam**2
+                                apval = np.nansum(apmask*cutout)
+    #                             snr[j,k] = apval/(np.sqrt(np.nansum(apmask))*std)
 
-                            # estimate of SNR, only valid for very high fluxes, could do better
-                            snr[j,k] = np.sqrt(apval)
-                            dy[j,k] -= y[j,k]-ymin
-                            dx[j,k] -= x[j,k]-xmin
+                                # estimate of SNR, only valid for very high fluxes, could do better
+                                snr[j,k] = np.sqrt(apval)
+                                dy[j,k] -= y[j,k]-ymin
+                                dx[j,k] -= x[j,k]-xmin
                             
-                # Thresholding
-                dy[snr<snrthreshold]=0.0
-                dx[snr<snrthreshold]=0.0
+                    # Thresholding
+                    dy[snr<snrthreshold]=0.0
+                    dx[snr<snrthreshold]=0.0
                 
-                # ignore if new centroid is too out of whack
-                dy[np.abs(dy)>pxthreshold]=0.0
-                dx[np.abs(dx)>pxthreshold]=0.0
+                    # ignore if new centroid is too out of whack
+                    dy[np.abs(dy)>pxthreshold]=0.0
+                    dx[np.abs(dx)>pxthreshold]=0.0
                 
-                dylist += [dy]
-                dxlist += [dx]
-                snrlist += [snr]
+                    dylist += [dy]
+                    dxlist += [dx]
+                    snrlist += [snr]
                 
-                if inspect:
-                    do_inspection(par, im.data, x+dx, y+dy, lamlist[i])
-                elif inspect_first and i == 0:
-                    do_inspection(par, im.data, x+dx, y+dy, lamlist[i])
+                    if inspect:
+                        do_inspection(par, im.data, x+dx, y+dy, lamlist[i])
+                    elif inspect_first and i == 0:
+                        do_inspection(par, im.data, x+dx, y+dy, lamlist[i])
 
-            else:
-                if inspect:
-                    do_inspection(par, im.data, x, y, lamlist[i])
-                elif inspect_first and i == 0:
-                    do_inspection(par, im.data, x, y, lamlist[i])
+                else:
+                    if inspect:
+                        do_inspection(par, im.data, x, y, lamlist[i])
+                    elif inspect_first and i == 0:
+                        do_inspection(par, im.data, x, y, lamlist[i])
 
 
     if genwavelengthsol:
@@ -1112,7 +1233,7 @@ def buildcalibrations(
 #         log.info("Loading previous wavelength calibration (PSFloc.fits)")
 #         psftool = PSFLets(load=True,infiledir=outdir)
 
-    xindx = np.arange(-par.nlens / 2, par.nlens / 2)
+    xindx = np.arange(-par.nlens // 2, par.nlens // 2)
     xindx, yindx = np.meshgrid(xindx, xindx)
     
     if makehiresPSFlets:

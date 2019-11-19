@@ -120,6 +120,7 @@ def convert_krist_cube(cubeshape, lamlist, star_T, star_Vmag, tel_area):
     return newcube
 
 import pandas as pd
+
 def bpgs_list(spectype=None,verbose=False):
     '''
     Returns pandas dataframe with the list of the files, the name and the type of the star
@@ -210,10 +211,11 @@ def input_star(filename,Vmag,wavel):
     ----------
     filename: string
         Text file corresponding to the bpgs specturm in pysynphot catalog
+        http://www.stsci.edu/hst/observatory/crds/astronomical_catalogs.html
     Vmag: float
         V magnitude of star
     wavel: array
-        Array of desired wavelengths in microns
+        Array of desired wavelengths in nm
         
     Returns
     -------

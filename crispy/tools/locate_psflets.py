@@ -355,7 +355,7 @@ class PSFLets:
             raise ValueError(
                 "Number of coefficients incorrect for polynomial order.")
 
-        xindx = np.arange(-par.nlens / 2, par.nlens / 2)
+        xindx = np.arange(-par.nlens // 2, par.nlens // 2)
         xindx, yindx = np.meshgrid(xindx, xindx)
 
         n_spline = 100
@@ -703,7 +703,7 @@ def corrval(coef, x, y, filtered, order, trimfrac=0.1):
     vals_ok = vals[np.where(np.isfinite(vals))]
     
     if trimfrac>0.0:
-        iclip = int(vals_ok.shape[0] * trimfrac / 2)
+        iclip = int(vals_ok.shape[0] * trimfrac // 2)
         vals_sorted = np.sort(vals_ok)
         score = -1 * np.sum(vals_sorted[iclip:-iclip])
     else:
@@ -737,7 +737,7 @@ def corrvalsum(coef, x, y, filtered, order, trimfrac=0.1,gsize=2):
 
 
 def locatePSFlets(inImage, mask, polyorder=2, sig=0.7, coef=None, trimfrac=0.1,
-                  phi=np.arctan2(1.926, -1), scale=15.02, nlens=108):
+                  phi=np.arctan2(1.926, -1), scale=15.02, nlens=108, finesearch=3):
     """
     function locatePSFlets takes an Image class, assumed to be a
     monochromatic grid of spots with read noise and shot noise, and
@@ -880,8 +880,8 @@ def locatePSFlets(inImage, mask, polyorder=2, sig=0.7, coef=None, trimfrac=0.1,
         bestval = 0
         coefsave = list(coef[:])
 
-        for ix in np.arange(-1, 3.1, 0.2):
-            for iy in np.arange(-1, 3.1, 0.2):
+        for ix in np.arange(-finesearch, finesearch, 0.2):
+            for iy in np.arange(-finesearch, finesearch, 0.2):
                 coef = coefsave[:]
                 coef[0] += ix
                 coef[(polyorder + 1) * (polyorder + 2) // 2] += iy
